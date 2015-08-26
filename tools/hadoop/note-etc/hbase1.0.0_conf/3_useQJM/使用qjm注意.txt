@@ -1,0 +1,9 @@
+1.
+修改使用的 hbase.rootdir 
+由 hdfs://master:9000/hbase 修改为 hdfs://lrtscluster/hbase
+
+2.
+需要创建 hdfs-site.xml 和 core-site.xml 的软连接到conf目录下
+
+ln -s /mycluster/hadoop-2.6.0-cdh5.4.3/etc/hadoop/core-site.xml conf/core-site.xml
+ln -s /mycluster/hadoop-2.6.0-cdh5.4.3/etc/hadoop/hdfs-site.xml conf/hdfs-site.xml

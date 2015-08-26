@@ -1,0 +1,15 @@
+1.
+去除hbase.master.info.bindAddress配置，不特别指定某一台机器为master
+
+2.
+运行脚本 "bin/start-hbase.sh"
+
+哪台机器执行，哪台机器就默认启动自己为master
+再到需要作为备用master的节点上执行脚本 "bin/hbase-daemon.sh start master"
+
+或者添加 backup-masters文件
+
+即可
+
+3.
+遗留问题：由于active master的ip地址会产生变化，需要考虑虚拟ip技术。

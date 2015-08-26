@@ -1,0 +1,215 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+/**
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+-->
+<configuration>
+  <!--Configs you will likely change are listed here at the top of the file.
+  -->
+  <property >
+    <name>hbase.rootdir</name>
+    <value>hdfs://centos141:9000/hbase</value>
+    <description>The directory shared by region servers and into
+    which HBase persists.  The URL should be 'fully-qualified'
+    to include the filesystem scheme.  For example, to specify the
+    HDFS directory '/hbase' where the HDFS instance's namenode is
+    running at namenode.example.org on port 9000, set this value to:
+    hdfs://namenode.example.org:9000/hbase.  By default, we write
+    to whatever ${hbase.tmp.dir} is set too -- usually /tmp --
+    so change this configuration or else all data will be lost on
+    machine restart.</description>
+  </property>
+
+  <property >
+    <name>hbase.cluster.distributed</name>
+    <value>true</value>
+    <description>The mode the cluster will be in. Possible values are
+      false for standalone mode and true for distributed mode.  If
+      false, startup will run all HBase and ZooKeeper daemons together
+      in the one JVM.</description>
+  </property>
+
+  <property>
+    <name>hbase.zookeeper.quorum</name>
+    <value>centos141,centos142,centos147</value>
+    <description>Comma separated list of servers in the ZooKeeper ensemble
+    (This config. should have been named hbase.zookeeper.ensemble).
+    For example, "host1.mydomain.com,host2.mydomain.com,host3.mydomain.com".
+    By default this is set to localhost for local and pseudo-distributed modes
+    of operation. For a fully-distributed setup, this should be set to a full
+    list of ZooKeeper ensemble servers. If HBASE_MANAGES_ZK is set in hbase-env.sh
+    this is the list of servers which hbase will start/stop ZooKeeper on as
+    part of cluster start/stop.  Client-side, we will take this list of
+    ensemble members and put it together with the hbase.zookeeper.clientPort
+    config. and pass it into zookeeper constructor as the connectString
+    parameter.</description>
+  </property>
+
+  <!--The above are the important configurations for getting hbase up
+    and running -->
+
+  <!--ZooKeeper configuration-->
+  <property>
+    <name>zookeeper.session.timeout</name>
+    <value>90000</value>
+    <description>ZooKeeper session timeout in milliseconds. It is used in two different ways.
+      First, this value is used in the ZK client that HBase uses to connect to the ensemble.
+      It is also used by HBase when it starts a ZK server and it is passed as the 'maxSessionTimeout'. See
+      http://hadoop.apache.org/zookeeper/docs/current/zookeeperProgrammers.html#ch_zkSessions.
+      For example, if a HBase region server connects to a ZK ensemble that's also managed by HBase, then the
+      session timeout will be the one specified by this configuration. But, a region server that connects
+      to an ensemble managed with a different configuration will be subjected that ensemble's maxSessionTimeout. So,
+      even though HBase might propose using 90 seconds, the ensemble can have a max timeout lower than this and
+      it will take precedence. The current default that ZK ships with is 40 seconds, which is lower than HBase's.
+    </description>
+  </property>
+  <property>
+    <name>zookeeper.znode.parent</name>
+    <value>/hbase</value>
+    <description>Root ZNode for HBase in ZooKeeper. All of HBase's ZooKeeper
+      files that are configured with a relative path will go under this node.
+      By default, all of HBase's ZooKeeper file path are configured with a
+      relative path, so they will all go under this directory unless changed.</description>
+  </property>
+
+  <property>
+    <name>hbase.zookeeper.property.clientPort</name>
+    <value>2181</value>
+    <description>Property from ZooKeeper's config zoo.cfg.
+    The port at which the clients will connect.</description>
+  </property>
+
+  <!--Master configurations-->
+  <property>
+    <name>hbase.master.info.port</name>
+    <value>60010</value>
+    <description>The port for the HBase Master web UI.
+    Set to -1 if you do not want a UI instance run.</description>
+  </property>
+  <property>
+    <name>hbase.master.info.bindAddress</name>
+    <value>centos141</value>
+    <description>The bind address for the HBase Master web UI
+    </description>
+  </property>
+
+  <property>
+    <name>hbase.regionserver.region.split.policy</name>
+    <value>org.apache.hadoop.hbase.regionserver.ConstantSizeRegionSplitPolicy</value>
+    <description>
+      A split policy determines when a region should be split. The various other split policies that
+      are available currently are ConstantSizeRegionSplitPolicy, DisabledRegionSplitPolicy,
+      DelimitedKeyPrefixRegionSplitPolicy, KeyPrefixRegionSplitPolicy etc.
+    </description>
+  </property>
+
+  <property>
+    <name>hbase.hregion.max.filesize</name>
+    <value>1099511627776</value>
+    <description>
+    Maximum HStoreFile size. If any one of a column families' HStoreFiles has
+    grown to exceed this value, the hosting HRegion is split in two.</description>
+  </property>
+
+  <property>
+    <name>hbase.hregion.majorcompaction</name>
+    <value>0</value>
+    <description>The time (in miliseconds) between 'major' compactions of all
+    HStoreFiles in a region.  Default: Set to 7 days.  Major compactions tend to
+    happen exactly when you need them least so enable them such that they run at
+    off-peak for your deploy; or, since this setting is on a periodicity that is
+    unlikely to match your loading, run the compactions via an external
+    invocation out of a cron job or some such.</description>
+  </property>
+
+  <property>
+    <name>hbase.hregion.memstore.flush.size</name>
+    <value>134217728</value>
+    <description>
+    Memstore will be flushed to disk if size of the memstore
+    exceeds this number of bytes.  Value is checked by a thread that runs
+    every hbase.server.thread.wakefrequency.</description>
+  </property>
+
+  <property>
+    <name>hbase.hstore.blockingStoreFiles</name>
+    <value>2100000000</value>
+    <description>
+    If more than this number of StoreFiles in any one Store
+    (one StoreFile is written per flush of MemStore) then updates are
+    blocked for this HRegion until a compaction is completed, or
+    until hbase.hstore.blockingWaitTime has been exceeded.</description>
+  </property>
+
+  <property>
+    <name>hbase.hstore.compactionThreshold</name>
+    <value>2100000000</value>
+    <description>
+    If more than this number of HStoreFiles in any one HStore
+    (one HStoreFile is written per flush of memstore) then a compaction
+    is run to rewrite all HStoreFiles files as one.  Larger numbers
+    put off compaction but when it runs, it takes longer to complete.</description>
+  </property>
+
+  <property>
+    <name>hbase.hstore.compaction.max</name>
+    <value>2100000000</value>
+    <description>Max number of HStoreFiles to compact per 'minor' compaction.</description>
+  </property>
+
+  <property>
+    <name>hbase.hregion.memstore.mslab.enabled</name>
+    <value>true</value>
+    <description>
+      Enables the MemStore-Local Allocation Buffer,
+      a feature which works to prevent heap fragmentation under
+      heavy write loads. This can reduce the frequency of stop-the-world
+      GC pauses on large heaps.</description>
+  </property>
+
+  <property>
+    <name>hbase.regionserver.global.memstore.size</name>
+    <value>0.4</value>
+    <description>Maximum size of all memstores in a region server before new
+      updates are blocked and flushes are forced. Defaults to 40% of heap (0.4).
+      Updates are blocked and flushes are forced until size of all memstores
+      in a region server hits hbase.regionserver.global.memstore.size.lower.limit.
+      The default value in this configuration has been intentionally left emtpy in order to
+      honor the old hbase.regionserver.global.memstore.upperLimit property if present.</description>
+  </property>
+  <property>
+    <name>hbase.regionserver.global.memstore.size.lower.limit</name>
+    <value>0.35</value>
+    <description>Maximum size of all memstores in a region server before flushes are forced.
+      Defaults to 95% of hbase.regionserver.global.memstore.size (0.95).
+      A 100% value for this value causes the minimum possible flushing to occur when updates are 
+      blocked due to memstore limiting.
+      The default value in this configuration has been intentionally left emtpy in order to
+      honor the old hbase.regionserver.global.memstore.lowerLimit property if present.</description>
+  </property>
+
+  <property>
+    <name>hbase.balancer.period
+    </name>
+    <value>200000000</value>
+    <description>Period at which the region balancer runs in the Master.</description>
+  </property>
+
+</configuration>

@@ -1,0 +1,185 @@
+
+目的：
+	解决hadoop集群中namenode单点故障的问题 single point of failure
+
+方法：
+	利用Quorum Journal Manager(简称QJM)实现namenode热备
+
+概述：
+	格式化集群的时候，手动使多个NN拥有相同的name.dir，
+	集群运行时用2N+1台JournalNode存储EditLog，每次写数据操作有大多数(>=N+1)返回成功时
+	即认为该次写成功，数据不会丢失了.
+	集群工作的时候，仅有一个NN处于active状态，其余NN统一standby,
+	DN同时向多个NN汇报块信息,一旦active状态的NN出现异常，standby
+	的NN就能迅速切换为active状态，接替原来NN的工作。
+
+最小配置节点分布：
+	centos1			NN(active) , JN, ZK
+	centos2			NN(standby), JN, ZK
+	centos3			DN, JN, ZK
+
+hadoop配置:
+
+	1.hdfs-site.xml
+	<!------------------------------------------------------------------>
+	<!--HA nameservers-->
+	<property>
+	    <name>dfs.nameservices</name>
+	    <value>lrtscluster</value>
+	</property>
+
+	<!--namenode sid in nameservers-->
+	<property>
+	    <name>dfs.ha.namenodes.lrtscluster</name>
+	    <value>nn1,nn2</value>
+	</property>
+
+	<!--rpc address-->
+	<property>
+	    <name>dfs.namenode.rpc-address.lrtscluster.nn1</name>
+	    <value>centos1:9000</value>
+	</property>
+
+	<property>
+	    <name>dfs.namenode.rpc-address.lrtscluster.nn2</name>
+	    <value>centos2:9000</value>
+	</property>
+
+	<!--servicerpc address-->
+	<property>
+		<name>dfs.namenode.servicerpc-address.lrtscluster.nn1</name>
+		<value>centos1:53310</value>
+	</property>
+
+	<property>
+		<name>dfs.namenode.servicerpc-address.lrtscluster.nn2</name>
+		<value>centos2:53310</value>
+	</property>
+
+	<!--http address-->
+	<property>
+	    <name>dfs.namenode.http-address.lrtscluster.nn1</name>
+	    <value>centos1:50070</value>
+	</property>
+
+	<property>
+	    <name>dfs.namenode.http-address.lrtscluster.nn2</name>
+	    <value>centos2:50070</value>
+	</property>
+
+	<!--there is 3 journalnodes to storage editlog data, write ipaddr and port-->
+	<property>
+	    <name>dfs.namenode.shared.edits.dir</name>
+	    <value>qjournal://centos1:8485;centos2:8485;centos3:8485/lrtscluster</value>
+	</property>
+
+	<!--every single journalnode storage data physical dir-->
+	<property>  
+	    <name>dfs.journalnode.edits.dir</name>  
+	    <value>/hadoop/dfsdata/journal</value>  
+	</property> 
+
+
+	<!--zookeeper-->
+	<property>
+	    <name>ha.zookeeper.quorum</name>
+	    <value>centos1:2181,centos2:2181,centos3:2181,</value>
+	</property>
+
+	<property>
+	    <name>ha.zookeeper.session-timeout.ms</name>
+	    <value>10000</value>
+	</property>
+
+	<!--auto switch active-standby namenode-->
+	<property>
+	    <name>dfs.ha.automatic-failover.enabled</name>
+	    <value>true</value>
+	</property>
+
+	<!--the class use for check whick namenode is active-->
+	<property>
+	    <name>dfs.client.failover.proxy.provider.lrtscluster</name>
+	    <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+	</property>
+
+	<!--ssh config-->
+	<property>
+	    <name>dfs.ha.fencing.methods</name>
+	    <value>sshfence</value>
+	</property>
+
+	<property>
+	    <name>dfs.permissions.superusergroup</name>
+	    <value>hadoop</value>
+	</property>
+
+	<property>
+	    <name>hadoop.http.staticuser.user</name>
+	    <value>hadoop</value>
+	</property>
+
+	<property>
+	 	<name>dfs.ha.fencing.ssh.private-key-files</name>
+		<value>/home/hadoop/.ssh/id_rsa</value>
+	</property>
+
+	<property>
+	 	<name>dfs.ha.fencing.ssh.connect-timeout</name>
+	 	<value>5000</value>
+	</property>
+
+	<!--and the basic config to run hdfs-->
+	<!------------------------------------------------------------------>
+
+	2.core-site.xml
+	<!------------------------------------------------------------------>
+	<!--namenode map name services-->
+	<property>
+		<name>fs.defaultFS</name>
+		<value>hdfs://lrtscluster</value>
+		<description>The name of the default file system.  A URI whose
+		scheme and authority determine the FileSystem implementation.  The
+		uri's scheme determines the config property (fs.SCHEME.impl) naming
+		the FileSystem implementation class.  The uri's authority is used to
+		determine the host, port, etc. for a filesystem.
+		</description>
+	</property>
+	<!------------------------------------------------------------------>
+
+
+启动方式：
+	需要在每个节点上做相应操作，下面由主机名区分
+	比如：在centos1上查看java进程
+	[host:centos1] jps
+
+	1.启动zookeeper集群
+	[host:centos1] bin/zkServer.sh start
+	[host:centos2] bin/zkServer.sh start
+	[host:centos3] bin/zkServer.sh start
+
+	2.在格式化NameNode之前先启动JournalNode服务
+	[host:centos1] sbin/hadoop-daemon.sh start journalnode
+	[host:centos2] sbin/hadoop-daemon.sh start journalnode
+	[host:centos3] sbin/hadoop-daemon.sh start journalnode
+
+	3.格式化namenode
+	[host:centos1] bin/hdfs namenode -format
+	[host:centos1] scp -r /hadoop/dfsdata/name centos2:/hadoop/dfsdata/
+
+	3.创建zookeeper上的hdfs根目录
+	[host:centos1] bin/hdfs zkfc -formatZK
+
+	4.运行集群
+	[host:centos1] sbin/start-dfs
+
+	5.验证
+		a.上传文件
+			[host:centos1] bin/hadoop fs -mkdir /upload
+			[host:centos1] bin/hadoop fs -put etc/hadoop/core-site.xml /upload
+
+		b.强制kill处于avtive状态的NN
+			[host:centos1] jps | grep -i 'NameNode' | grep -v grep | awk '{print $1}' | xargs kill -9
+
+		c.重新上传文件
+			[host:centos1] bin/hadoop fs -put etc/hadoop/hdfs-site.xml /upload

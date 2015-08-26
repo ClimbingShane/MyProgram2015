@@ -1,0 +1,28 @@
+[mysqld]
+datadir=/gmdata/mysql
+socket=/var/lib/mysql/mysql.sock
+user=mysql
+# Disabling symbolic-links is recommended to prevent assorted security risks
+symbolic-links=0
+event_scheduler=ON
+#开启mysql计划任务功能
+skip-name-resolve					
+#禁止使用dns解析
+slow_query_log=1	
+#开启慢日志功能
+log-slow-queries=/gmdata/slowquery.log
+#慢日志目录
+long_query_time=5
+#记录下查询时间查过5秒
+max_connections = 1000 
+#MySQL 服务所允许的同时会话数的上限
+key_buffer_size=400M
+#索引块的缓冲区大小
+sort_buffer_size = 16M 
+# 排序缓冲被用来处理类似ORDER BY以及GROUP BY队列所引起的排序
+join_buffer_size = 16M 
+#此缓冲被使用来优化全联合(full JOINs 不带索引的联合).
+query_cache_size = 32M
+[mysqld_safe]
+log-error=/var/log/mysqld.log
+pid-file=/var/run/mysqld/mysqld.pid

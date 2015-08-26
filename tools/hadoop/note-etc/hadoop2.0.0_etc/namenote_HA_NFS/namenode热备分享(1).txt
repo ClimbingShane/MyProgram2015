@@ -1,0 +1,209 @@
+
+目的：
+	解决hadoop集群中namenode单点故障的问题
+
+方法：
+	采用nfs+HA实现
+
+概述：
+	格式化集群的时候，手动使多个NN拥有相同的name.dir，
+	然后通过nfs共享存储来在同步多个NN间editlog的信息，
+	集群工作的时候，仅有一个NN处于active状态，其余NN统一standby,
+	DN同时向多个NN汇报块信息,一旦active状态的NN出现异常，standby
+	的NN就能迅速切换为active状态，接替原来NN的工作。
+
+最小配置节点分布：
+	centos1			NN(active) , NFS server, ZK
+	centos2			NN(standby), NFS client, ZK
+	centos3			DN, ZK
+
+前期准备：
+	这里非常重要，是必要的系统配置。
+	1.centos1与centos2中必须已经创建hadoop用户，并且hadoop用户的用户id与用户分组id需要对应。可以采取以下方式创建用户
+		groupadd -g 9876 hadoop						//9876随意指定，保证centos1与centos2相同即可
+		useradd -u 5432 hadoop -m -g hadoop			//5432随意指定，保证centos1与centos2相同即可
+
+		可以通过/etc/passwd和/etc/group查看id是否对应
+
+	2.在centos1上，使用hadoop用户，能通过ssh访问centos2，centos3,且不需要输入密码。
+		在centos1上操作：
+			su hadoop
+			ssh-keygen -t rsa
+			ssh-copy-id	centos2
+			ssh-copy-id	centos3
+
+nfs共享：
+	1.在centos1上操作：
+		a.创建/nfs共享目录
+			mkdir /nfs
+			chmod 777 /nfs
+			chown -R hadoop:hadoop /nfs
+
+		b.在/etc/exports文件中添加
+			/nfs centos2(rw,sync,no_all_squash)
+		c.开启nfs服务
+			service nfs start
+		d.查看目录是否导出
+			exportfs
+			showmount -e
+
+	2.在centos2上操作：
+		a.创建/nfs共享目录
+			mkdir /nfs
+			chmod 777 /nfs
+			chown -R hadoop:hadoop /nfs
+
+		b.挂载nfs目录
+			mount.nfs centos1:/nfs /nfs
+
+	3.验证
+		a.在centos1的/nfs目录下写入文件，能在centos2的/nfs目录下能查看到
+		b.在centos2的/nfs目录下写入文件，也能在centos1的/nfs目录下能查看到
+
+hadoop配置:
+
+	1.hdfs-site.xml
+	<!------------------------------------------------------------------>
+	<!--HA nameservers-->
+	<property>
+	    <name>dfs.nameservices</name>
+	    <value>ns1</value>
+	</property>
+
+	<property>
+	    <name>dfs.ha.namenodes.ns1</name>
+	    <value>nn1,nn2</value>
+	</property>
+
+	<property>
+	    <name>dfs.namenode.rpc-address.ns1.nn1</name>
+	    <value>centos1:9000</value>
+	</property>
+
+	<property>
+	    <name>dfs.namenode.http-address.ns1.nn1</name>
+	    <value>centos1:50070</value>
+	</property>
+
+	<property>
+	    <name>dfs.namenode.rpc-address.ns1.nn2</name>
+	    <value>centos2:9000</value>
+	</property>
+
+	<property>
+	    <name>dfs.namenode.http-address.ns1.nn2</name>
+	    <value>centos2:50070</value>
+	</property>
+
+	<!--nfs share edits-->
+	<property>
+	    <name>dfs.namenode.shared.edits.dir</name>
+	    <value>file:///nfs/ha-edits</value>
+	</property>
+
+	<!--zookeeper-->
+	<property>
+	    <name>ha.zookeeper.quorum</name>
+	    <value>centos1:2181,centos2:2181,centos3:2181,</value>
+	</property>
+
+	<property>
+	    <name>ha.zookeeper.session-timeout.ms</name>
+	    <value>10000</value>
+	</property>
+
+	<!--HA client-->
+	<property>
+	    <name>dfs.ha.automatic-failover.enabled</name>
+	    <value>true</value>
+	</property>
+
+	<property>
+	    <name>dfs.client.failover.proxy.provider.ns1</name>
+	    <value>org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider</value>
+	</property>
+
+	<!--ssh config-->
+	<property>
+	    <name>dfs.ha.fencing.methods</name>
+	    <value>sshfence</value>
+	</property>
+
+	<property>
+	    <name>dfs.permissions.superusergroup</name>
+	    <value>hadoop</value>
+	</property>
+
+	<property>
+	 	<name>dfs.ha.fencing.ssh.private-key-files</name>
+		<value>/home/hadoop/.ssh/id_rsa</value>
+	</property>
+
+	<property>
+	 	<name>dfs.ha.fencing.ssh.connect-timeout</name>
+	 	<value>5000</value>
+	</property>
+
+	<!--and the basic config to run hdfs-->
+	<!------------------------------------------------------------------>
+
+	2.core-site.xml
+	<!------------------------------------------------------------------>
+	<!--namenode map name services-->
+	<property>
+		<name>fs.defaultFS</name>
+		<value>hdfs://ns1</value>
+		<description>The name of the default file system.  A URI whose
+		scheme and authority determine the FileSystem implementation.  The
+		uri's scheme determines the config property (fs.SCHEME.impl) naming
+		the FileSystem implementation class.  The uri's authority is used to
+		determine the host, port, etc. for a filesystem.
+		</description>
+	</property>
+
+	<property>
+		<name>ipc.server.tcpnodelay</name>
+		<value>true</value>
+	</property>
+
+	<property>
+		<name>ipc.client.tcpnodelay</name>
+		<value>true</value>
+		<description>Turn on/off Nagle's algorithm for the TCP socket connection on
+		the client. Setting to true disables the algorithm and may decrease latency
+		with a cost of more/smaller packets.
+		</description>
+	</property>
+	<!------------------------------------------------------------------>
+
+
+启动方式：
+	需要在每个节点上做相应操作，下面由主机名区分
+	比如：在centos1上查看java进程
+	[host:centos1] jps
+
+	1.启动zookeeper集群
+	[host:centos1] bin/zkServer.sh start
+	[host:centos2] bin/zkServer.sh start
+	[host:centos3] bin/zkServer.sh start
+
+	2.格式化namenode
+	[host:centos1] bin/hdfs namenode -format
+	[host:centos1] scp -r /hadoop/dfsdata centos2:/hadoop/dfsdata
+
+	3.创建zookeeper上的hdfs根目录
+	[host:centos1] bin/hdfs zkfc -formatZK
+
+	4.运行集群
+	[host:centos1] sbin/start-dfs
+
+	5.验证
+		a.上传文件
+			[host:centos1] bin/hadoop fs -mkdir /upload
+			[host:centos1] bin/hadoop fs -put etc/hadoop/core-site.xml /upload
+
+		b.强制kill处于avtive状态的NN
+			[host:centos1] jps | grep -i 'NameNode' | grep -v grep | awk '{print $1}' | xargs kill -9
+
+		c.重新上传文件
+			[host:centos1] bin/hadoop fs -put etc/hadoop/hdfs-site.xml /upload
