@@ -1,8 +1,10 @@
 1.修改bin/zkEnv.sh 和 libexec/zkEnv.sh
-	ZOO_LOG_DIR='/mycluster/zookeeper-3.4.5-cdh4.4.0/logs'
+	ZOO_LOG_DIR='//mycluster/zookeeper-3.4.5-cdh5.4.3/logs'
+	or
+	ZOO_LOG_DIR="${ZOOBINDIR}/../logs"
 2.拷贝zoo_simple.cfg为zoo.cfg，并修改
-	dataDir=/mycluster/zookeeper-3.4.5-cdh4.4.0/data
-	dataLogDir=/mycluster/zookeeper-3.4.5-cdh4.4.0/logs
+	dataDir=/mycluster/zookeeper-3.4.5-cdh5.4.3/data
+	dataLogDir=/mycluster/zookeeper-3.4.5-cdh5.4.3/logs
 
 	server.1=centos1:2888:3888
 	server.2=centos2:2888:3888
